@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kalkulator Ilmiah</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #11111b; font-family: system-ui, sans-serif; }
+  .calc {
+    max-width: 380px; margin: 20px auto; padding: 14px;
+    background: #1e1e2e; border-radius: 16px;
+  }
+  .layar {
+    background: #11111b; color: #fff; border-radius: 10px;
+    padding: 12px; text-align: right; min-height: 80px;
+  }
+  #riwayat { font-size: 14px; color: #888; min-height: 18px; overflow-x: auto; }
+  #tampil { font-size: 32px; overflow-x: auto; white-space: nowrap; }
+  .tombol {
+    display: grid; gap: 8px; margin-top: 12px;
+    grid-template-columns: repeat(5, 1fr);
+  }
+  .tombol button {
+    padding: 14px 0; font-size: 16px; border: 0;
+    border-radius: 10px; background: #313244; color: #fff; cursor: pointer;
+  }
+  .tombol button:active { transform: scale(.95); }
+  .op { background: #fab387 !important; color: #000 !important; }
+  .aksi { background: #f38ba8 !important; color: #000 !important; }
+  .lebar { grid-column: span 2; }
+</style>
+</head>
+<body>
+<div class="calc">
+  <div class="layar">
+    <div id="riwayat"></div>
+    <div id="tampil">0</div>
+  </div>
+
+  <div class="tombol">
+    <button data-v="sin(">sin</button>
+    <button data-v="cos(">cos</button>
+    <button data-v="tan(">tan</button>
+    <button data-v="log(">log</button>
+    <button data-v="ln(">ln</button>
+
+    <button data-v="√(">√</button>
+    <button data-v="^2">x²</button>
+    <button data-v="^">xʸ</button>
+    <button data-v="π">π</button>
+    <button data-v="e">e</button>
+
+    <button data-v="!">n!</button>
+    <button data-v="(">(</button>
+    <button data-v=")">)</button>
+    <button id="mode">Deg</button>
+    <button id="hapus">⌫</button>
+
+    <button data-v="7">7</button>
+    <button data-v="8">8</button>
+    <button data-v="9">9</button>
+    <button data-v="÷" class="op">÷</button>
+    <button id="ac" class="aksi">AC</button>
+
+    <button data-v="4">4</button>
+    <button data-v="5">5</button>
+    <button data-v="6">6</button>
+    <button data-v="×" class="op">×</button>
+    <button data-v="-" class="op">−</button>
+
+    <button data-v="1">1</button>
+    <button data-v="2">2</button>
+    <button data-v="3">3</button>
+    <button data-v="+" class="op">+</button>
+    <button data-v="ANS">ANS</button>
+
+    <button data-v="0" class="lebar">0</button>
+    <button data-v=".">.</button>
+    <button id="sama" class="aksi lebar">=</button>
+  </div>
+</div>
+
+<script>
+let expr = "";
+let ans = 0;
+let deg = true;
+let habis = false; // true setelah menekan "="
+
+const tampil = document.getElementById("tampil");
+const riwayat = document.getElementById("riwayat");
+
+const toRad = x => (deg ? x * Math.PI / 180 : x);
+
+function fakt(n) {
+  if (!Number.isInteger(n) || n < 0 || n > 170) return NaN;
+  let r = 1;
+  for (let i = 2; i <= n; i++) r *= i;
+  return r;
+}
+
+const fn = {
+  sin: x => Math.sin(toRad(x)),
+  cos: x => Math.cos(toRad(x)),
+  tan: x => Math.tan(toRad(x)),
+  log: x => Math.log10(x),
+  ln: x => Math.log(x),
+  "√": x => Math.sqrt(x)
+};
+
+// Parser rekursif (recursive descent): aman, tanpa eval/new Function
+function hitung(s) {
+  const re = /\d+\.?\d*|\.\d+|sin|cos|tan|log|ln|ANS|π|e|√|[+\-×÷^!()]/y;
+  const t = [];
+  while (re.lastIndex < s.length) {
+    const m = re.exec(s);
+    if (!m) throw new Error("token");
+    t.push(m[0]);
+  }
+
+  let p = 0;
+  const peek = () => t[p];
+  const isNum = x => x !== undefined && /^[\d.]/.test(x);
+  const mulkan = x =>
+    x !== undefined &&
+    (isNum(x) || ["sin", "cos", "tan", "log", "ln", "ANS", "π", "e", "√", "("].includes(x));
+
+  function tutup() {
+    if (peek() === ")") p++;
+    else if (p < t.length) throw new Error("kurung");
+    // jika ekspresi habis, kurung otomatis ditutup
+  }
+
+  function ekspresi() {
+    let v = suku();
+    while (peek() === "+" || peek() === "-") {
+      const o = t[p++];
+      const r = suku();
+      v = o === "+" ? v + r : v - r;
+    }
+    return v;
+  }
+
+  function suku() {
+    let v = uner();
+    for (;;) {
+      const x = peek();
+      if (x === "×" || x === "÷") {
+        p++;
+        const r = uner();
+        v = x === "×" ? v * r : v / r;
+      } else if (mulkan(x)) {
+        v *= uner(); // perkalian implisit: 2π, 3(4+1)
+      } else break;
+    }
+    return v;
+  }
+
+  function uner() {
+    if (peek() === "-") { p++; return -uner(); }
+    if (peek() === "+") { p++; return uner(); }
+    return pangkat();
+  }
+
+  function pangkat() {
+    const b = pasca();
+    if (peek() === "^") { p++; return Math.pow(b, uner()); }
+    return b;
+  }
+
+  function pasca() {
+    let v = dasar();
+    while (peek() === "!") { p++; v = fakt(v); }
+    return v;
+  }
+
+  function dasar() {
+    const x = t[p++];
+    if (x === undefined) throw new Error("kosong");
+    if (isNum(x)) {
+      const n = Number(x);
+      if (isNaN(n)) throw new Error("angka");
+      return n;
+    }
+    if (x === "π") return Math.PI;
+    if (x === "e") return Math.E;
+    if (x === "ANS") return ans;
+    if (x === "(") { const v = ekspresi(); tutup(); return v; }
+    if (fn[x]) {
+      if (t[p] !== "(") throw new Error("fungsi");
+      p++;
+      const v = ekspresi();
+      tutup();
+      return fn[x](v);
+    }
+    throw new Error("sintaks");
+  }
+
+  const hasil = ekspresi();
+  if (p < t.length) throw new Error("sisa");
+  return hasil;
+}
+
+function render() {
+  tampil.textContent = expr === "" ? "0" : expr;
+}
+
+function masuk(v) {
+  if (habis) {
+    if (["+", "-", "×", "÷", "^", "!", "^2"].includes(v)) expr = "ANS" + v;
+    else expr = v;
+    habis = false;
+  } else {
+    expr += v;
+  }
+  render();
+}
+
+function sama() {
+  if (expr === "") return;
+  try {
+    const r = hitung(expr);
+    if (!Number.isFinite(r)) throw new Error("hasil");
+    const bersih = Number(r.toPrecision(12));
+    riwayat.textContent = expr + " =";
+    ans = bersih;
+    expr = String(bersih);
+    tampil.textContent = expr;
+    habis = true;
+  } catch (e) {
+    riwayat.textContent = expr;
+    tampil.textContent = "Error";
+    expr = "";
+    habis = false;
+  }
+}
+
+document.querySelectorAll("button[data-v]").forEach(b => {
+  b.addEventListener("click", () => masuk(b.dataset.v));
+});
+
+document.getElementById("sama").addEventListener("click", sama);
+
+document.getElementById("ac").addEventListener("click", () => {
+  expr = ""; habis = false; riwayat.textContent = ""; render();
+});
+
+document.getElementById("hapus").addEventListener("click", () => {
+  if (habis) { expr = ""; habis = false; }
+  else expr = expr.replace(/(sin\(|cos\(|tan\(|log\(|ln\(|√\(|ANS|.)$/, "");
+  render();
+});
+
+document.getElementById("mode").addEventListener("click", e => {
+  deg = !deg;
+  e.target.textContent = deg ? "Deg" : "Rad";
+});
+
+// Input keyboard
+document.addEventListener("keydown", e => {
+  const k = e.key;
+  if (/^[0-9.+\-^!()]$/.test(k)) masuk(k);
+  else if (k === "*") masuk("×");
+  else if (k === "/") { e.preventDefault(); masuk("÷"); }
+  else if (k === "Enter" || k === "=") { e.preventDefault(); sama(); }
+  else if (k === "Backspace") document.getElementById("hapus").click();
+  else if (k === "Escape") document.getElementById("ac").click();
+});
+</script>
+</body>
+</html>
